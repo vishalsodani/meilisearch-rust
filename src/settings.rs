@@ -4,9 +4,9 @@ use crate::{
     request::{request, Method},
     task_info::TaskInfo,
 };
-use std::result::Result as StdResult;
-use serde::{Deserialize, Serialize, Serializer, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
+use std::result::Result as StdResult;
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum Setting<T> {
@@ -82,20 +82,20 @@ pub struct PaginationSetting {
     pub max_total_hits: usize,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MinWordSizeForTypos {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub one_typo: Option<u8>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub two_typos: Option<u8>,
+    #[serde(skip_serializing_if = "Setting::is_not_set")]
+    pub one_typo: Setting<u8>,
+    #[serde(skip_serializing_if = "Setting::is_not_set")]
+    pub two_typos: Setting<u8>,
 }
 
 impl Default for MinWordSizeForTypos {
     fn default() -> Self {
         MinWordSizeForTypos {
-            one_typo: Some(5),
-            two_typos: Some(9),
+            one_typo: Setting::Set(5),
+            two_typos: Setting::Set(9),
         }
     }
 }
@@ -126,12 +126,7 @@ impl Default for TypoToleranceSettings {
 
 impl TypoToleranceSettings {
     pub fn new() -> Self {
-        TypoToleranceSettings {
-            enabled: Setting::Set(true),
-            disable_on_attributes: vec![],
-            disable_on_words: vec![],
-            min_word_size_for_typos: MinWordSizeForTypos::default(),
-        }
+        Default::default()
     }
 
     pub fn with_enabled(self, enabled: bool) -> TypoToleranceSettings {
@@ -146,12 +141,11 @@ impl TypoToleranceSettings {
         disable_on_attributes: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> TypoToleranceSettings {
         TypoToleranceSettings {
-            disable_on_attributes: 
-                disable_on_attributes
-                    .into_iter()
-                    .map(|v| v.as_ref().to_string())
-                    .collect(),
-            
+            disable_on_attributes: disable_on_attributes
+                .into_iter()
+                .map(|v| v.as_ref().to_string())
+                .collect(),
+
             ..self
         }
     }
@@ -160,12 +154,11 @@ impl TypoToleranceSettings {
         disable_on_words: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> TypoToleranceSettings {
         TypoToleranceSettings {
-            disable_on_words: 
-                disable_on_words
-                    .into_iter()
-                    .map(|v| v.as_ref().to_string())
-                    .collect(),
-            
+            disable_on_words: disable_on_words
+                .into_iter()
+                .map(|v| v.as_ref().to_string())
+                .collect(),
+
             ..self
         }
     }
@@ -178,6 +171,11 @@ impl TypoToleranceSettings {
             min_word_size_for_typos: min_word_size_for_typos,
             ..self
         }
+    }
+
+    pub fn with_min_word_size_for_one_typo(mut self, one_typo: u8) -> TypoToleranceSettings {
+        self.min_word_size_for_typos.one_typo = Setting::Set(one_typo);
+        self
     }
 }
 
@@ -1717,14 +1715,12 @@ mod tests {
 
     #[meilisearch_test]
     async fn test_set_typo_tolerance(client: Client, index: Index) {
-        let typo_tolerance = TypoToleranceSettings::new().
-            with_disable_on_attributes(vec!["title"]).with_enabled(false);
+        let typo_tolerance = TypoToleranceSettings::new().with_min_word_size_for_one_typo(1);
 
         let task_info = index.set_typo_tolerance(&typo_tolerance).await.unwrap();
         client.wait_for_task(task_info, None, None).await.unwrap();
 
         let res = index.get_typo_tolerance().await.unwrap();
-
         assert_eq!(typo_tolerance, res);
     }
 
