@@ -177,6 +177,11 @@ impl TypoToleranceSettings {
         self.min_word_size_for_typos.one_typo = Setting::Set(one_typo);
         self
     }
+
+    pub fn with_min_word_size_for_two_typo(mut self, two_typo: u8) -> TypoToleranceSettings {
+        self.min_word_size_for_typos.two_typos = Setting::Set(two_typo);
+        self
+    }
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone, Eq, PartialEq)]

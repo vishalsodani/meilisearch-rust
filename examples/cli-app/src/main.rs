@@ -1,5 +1,6 @@
 use futures::executor::block_on;
 use lazy_static::lazy_static;
+use meilisearch_sdk::settings::TypoToleranceSettings;
 use meilisearch_sdk::{client::*, settings::Settings};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -76,6 +77,10 @@ async fn build_index() {
     //create searchable attributes
     let searchable_attributes = ["seaon", "article", "size", "pattern"];
 
+    let typo_tolerance_settings = TypoToleranceSettings::new()
+        .with_min_word_size_for_two_typo(4)
+        .with_min_word_size_for_one_typo(2);
+
     // create the synonyms hashmap
     let mut synonyms = std::collections::HashMap::new();
     synonyms.insert("sweater", vec!["cardigan", "long-sleeve"]);
@@ -87,7 +92,8 @@ async fn build_index() {
         .with_ranking_rules(ranking_rules)
         .with_searchable_attributes(searchable_attributes)
         .with_displayed_attributes(displayed_attributes)
-        .with_synonyms(synonyms);
+        .with_synonyms(synonyms)
+        .with_typo_tolerance(typo_tolerance_settings);
 
     //add the settings to the index
     let result = CLIENT
