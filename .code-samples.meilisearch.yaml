@@ -240,6 +240,34 @@ reset_pagination_settings_1: |-
     .reset_pagination()
     .await
     .unwrap();
+get_typo_tolerance_1: |-
+  let typo_tolerance: TypoToleranceSettings = client
+    .index("books")
+    .get_typo_tolerance()
+    .await
+    .unwrap();
+update_typo_tolerance_1: |-
+  let typo_tolerance = TypoToleranceSettings {
+            enabled: Some(false),
+            disable_on_attributes: None,
+            disable_on_words: None,
+            min_word_size_for_typos: Some(MinWordSizeForTypos {
+                one_typo: Some(6),
+                two_typos: Some(9),
+            }),
+  };
+
+  let task: TaskInfo = client
+    .index("books")
+    .set_typo_tolerance(typo_tolerance)
+    .await
+    .unwrap();
+reset_typo_tolerance_1: |-
+  let task: TaskInfo = client
+    .index("books")
+    .reset_typo_tolerance()
+    .await
+    .unwrap();
 get_stop_words_1: |-
   let stop_words: Vec<String> = client
     .index("movies")

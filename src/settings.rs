@@ -4,8 +4,77 @@ use crate::{
     request::{request, Method},
     task_info::TaskInfo,
 };
-use serde::{Deserialize, Serialize};
+use std::result::Result as StdResult;
+use serde::{Deserialize, Serialize, Serializer, Deserializer};
 use std::collections::HashMap;
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum Setting<T> {
+    Set(T),
+    Reset,
+    NotSet,
+}
+
+impl<T> Default for Setting<T> {
+    fn default() -> Self {
+        Self::NotSet
+    }
+}
+
+impl<T> Setting<T> {
+    pub fn set(self) -> Option<T> {
+        match self {
+            Self::Set(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub const fn as_ref(&self) -> Setting<&T> {
+        match *self {
+            Self::Set(ref value) => Setting::Set(value),
+            Self::Reset => Setting::Reset,
+            Self::NotSet => Setting::NotSet,
+        }
+    }
+
+    pub const fn is_not_set(&self) -> bool {
+        matches!(self, Self::NotSet)
+    }
+
+    /// If `Self` is `Reset`, then map self to `Set` with the provided `val`.
+    pub fn or_reset(self, val: T) -> Self {
+        match self {
+            Self::Reset => Self::Set(val),
+            otherwise => otherwise,
+        }
+    }
+}
+
+impl<T: Serialize> Serialize for Setting<T> {
+    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Set(value) => Some(value),
+            // Usually not_set isn't serialized by setting skip_serializing_if field attribute
+            Self::NotSet | Self::Reset => None,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for Setting<T> {
+    fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Deserialize::deserialize(deserializer).map(|x| match x {
+            Some(x) => Self::Set(x),
+            None => Self::Reset, // Reset is forced by sending null value
+        })
+    }
+}
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq, Copy)]
 #[serde(rename_all = "camelCase")]
@@ -31,27 +100,83 @@ impl Default for MinWordSizeForTypos {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 
 pub struct TypoToleranceSettings {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enabled: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub disable_on_attributes: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub disable_on_words: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub min_word_size_for_typos: Option<MinWordSizeForTypos>,
+    #[serde(skip_serializing_if = "Setting::is_not_set")]
+    pub enabled: Setting<bool>,
+    // #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub disable_on_attributes: Vec<String>,
+    //#[serde(skip_serializing_if = "Option::is_none")]
+    pub disable_on_words: Vec<String>,
+    pub min_word_size_for_typos: MinWordSizeForTypos,
 }
 
 impl Default for TypoToleranceSettings {
     fn default() -> Self {
         TypoToleranceSettings {
-            enabled: Some(true),
-            disable_on_attributes: Some(vec![]),
-            disable_on_words: Some(vec![]),
-            min_word_size_for_typos: Some(MinWordSizeForTypos::default()),
+            enabled: Setting::Set(true),
+            disable_on_attributes: vec![],
+            disable_on_words: vec![],
+            min_word_size_for_typos: MinWordSizeForTypos::default(),
+        }
+    }
+}
+
+impl TypoToleranceSettings {
+    pub fn new() -> Self {
+        TypoToleranceSettings {
+            enabled: Setting::Set(true),
+            disable_on_attributes: vec![],
+            disable_on_words: vec![],
+            min_word_size_for_typos: MinWordSizeForTypos::default(),
+        }
+    }
+
+    pub fn with_enabled(self, enabled: bool) -> TypoToleranceSettings {
+        TypoToleranceSettings {
+            enabled: Setting::Set(enabled),
+            ..self
+        }
+    }
+
+    pub fn with_disable_on_attributes(
+        self,
+        disable_on_attributes: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> TypoToleranceSettings {
+        TypoToleranceSettings {
+            disable_on_attributes: 
+                disable_on_attributes
+                    .into_iter()
+                    .map(|v| v.as_ref().to_string())
+                    .collect(),
+            
+            ..self
+        }
+    }
+    pub fn with_disable_on_words(
+        self,
+        disable_on_words: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> TypoToleranceSettings {
+        TypoToleranceSettings {
+            disable_on_words: 
+                disable_on_words
+                    .into_iter()
+                    .map(|v| v.as_ref().to_string())
+                    .collect(),
+            
+            ..self
+        }
+    }
+
+    pub fn with_min_word_size_for_typos(
+        self,
+        min_word_size_for_typos: MinWordSizeForTypos,
+    ) -> TypoToleranceSettings {
+        TypoToleranceSettings {
+            min_word_size_for_typos: min_word_size_for_typos,
+            ..self
         }
     }
 }
@@ -1077,7 +1202,7 @@ impl Index {
     /// # client.create_index("set_typo_tolerance", None).await.unwrap().wait_for_completion(&client, None, None).await.unwrap();
     /// let mut index = client.index("set_typo_tolerance");
     ///
-    /// let mut typo_tolerance = TypoToleranceSettings::default();
+    /// let mut typo_tolerance = TypoToleranceSettings::new().with_enabled(false);
     ///
     /// let task = index.set_typo_tolerance(&typo_tolerance).await.unwrap();
     /// # index.delete().await.unwrap().wait_for_completion(&client, None, None).await.unwrap();
@@ -1592,15 +1717,9 @@ mod tests {
 
     #[meilisearch_test]
     async fn test_set_typo_tolerance(client: Client, index: Index) {
-        let typo_tolerance = TypoToleranceSettings {
-            enabled: Some(false),
-            disable_on_attributes: Some(vec![]),
-            disable_on_words: Some(vec![]),
-            min_word_size_for_typos: Some(MinWordSizeForTypos {
-                one_typo: Some(6),
-                two_typos: Some(9),
-            }),
-        };
+        let typo_tolerance = TypoToleranceSettings::new().
+            with_disable_on_attributes(vec!["title"]).with_enabled(false);
+
         let task_info = index.set_typo_tolerance(&typo_tolerance).await.unwrap();
         client.wait_for_task(task_info, None, None).await.unwrap();
 
@@ -1611,15 +1730,7 @@ mod tests {
 
     #[meilisearch_test]
     async fn test_reset_typo_tolerance(index: Index) {
-        let typo_tolerance = TypoToleranceSettings {
-            enabled: Some(false),
-            disable_on_attributes: Some(vec![]),
-            disable_on_words: Some(vec![]),
-            min_word_size_for_typos: Some(MinWordSizeForTypos {
-                one_typo: Some(1),
-                two_typos: Some(2),
-            }),
-        };
+        let typo_tolerance = TypoToleranceSettings::new().with_enabled(false);
 
         let task = index.set_typo_tolerance(&typo_tolerance).await.unwrap();
         index.wait_for_task(task, None, None).await.unwrap();
@@ -1629,6 +1740,6 @@ mod tests {
 
         let res = index.get_typo_tolerance().await.unwrap();
 
-        assert_eq!(TypoToleranceSettings::default(), res);
+        assert_eq!(TypoToleranceSettings::new(), res);
     }
 }

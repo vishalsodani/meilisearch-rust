@@ -1,0 +1,18 @@
+#[meilisearch_test]
+    async fn test_set_typo_tolerance(client: Client, index: Index) {
+        let typo_tolerance = TypoToleranceSettings {
+            enabled: None,
+            disable_on_attributes: Some(vec![]),
+            disable_on_words: Some(vec![]),
+            min_word_size_for_typos: Some(MinWordSizeForTypos {
+                one_typo: Some(6),
+                two_typos: Some(9),
+            }),
+        };
+        let task_info = index.set_typo_tolerance(&typo_tolerance).await.unwrap();
+        client.wait_for_task(task_info, None, None).await.unwrap();
+
+        let res = index.get_typo_tolerance().await.unwrap();
+
+        assert_eq!(typo_tolerance, res);
+    }
